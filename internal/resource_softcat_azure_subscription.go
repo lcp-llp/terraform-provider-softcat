@@ -89,6 +89,9 @@ func ResourceAzureSubscription() *schema.Resource {
 		ReadContext:   resourceAzureSubscriptionRead,
 		UpdateContext: resourceAzureSubscriptionUpdate,
 		DeleteContext: resourceAzureSubscriptionDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceAzureSubscriptionImport,
+		},
 		Schema: map[string]*schema.Schema{
 			"basket_name": {
 				Type:         schema.TypeString,
@@ -332,6 +335,25 @@ func resourceAzureSubscriptionUpdate(ctx context.Context, d *schema.ResourceData
 	return resourceAzureSubscriptionRead(ctx, d, meta)
 }
 
+func resourceAzureSubscriptionImport(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
+	msID, orderID, err := parseAzureSubscriptionImportID(d.Id())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := d.Set("msid", msID); err != nil {
+		return nil, fmt.Errorf("set msid: %w", err)
+	}
+
+	if err := d.Set("order_id", orderID); err != nil {
+		return nil, fmt.Errorf("set order_id: %w", err)
+	}
+
+	d.SetId(orderID)
+
+	return []*schema.ResourceData{d}, nil
+}
+
 func resourceAzureSubscriptionDelete(_ context.Context, d *schema.ResourceData, _ interface{}) diag.Diagnostics {
 	d.SetId("")
 
@@ -482,6 +504,15 @@ func buildGetAzureSubscriptionsQuery(msID string, orderID string) string {
 		graphQLString(orderID))
 }
 
+func parseAzureSubscriptionImportID(value string) (string, string, error) {
+	parts := strings.SplitN(value, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("unexpected import ID format %q, expected msid/order_id", value)
+	}
+
+	return parts[0], parts[1], nil
+}
+
 func flattenAzureSubscriptionOrder(d *schema.ResourceData, order AzureSubscriptionOrder) error {
 	if err := d.Set("status", order.Status); err != nil {
 		return fmt.Errorf("set status: %w", err)
@@ -525,6 +556,10 @@ func flattenAzureSubscriptionOrder(d *schema.ResourceData, order AzureSubscripti
 }
 
 func flattenAzureSubscription(d *schema.ResourceData, subscription AzureSubscription) error {
+	if err := d.Set("azure_nickname", subscription.FriendlyName); err != nil {
+		return fmt.Errorf("set azure_nickname: %w", err)
+	}
+
 	if err := d.Set("subscription_id", subscription.SubscriptionID); err != nil {
 		return fmt.Errorf("set subscription_id: %w", err)
 	}
