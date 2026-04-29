@@ -24,7 +24,7 @@ resource "softcat_azure_subscription" "example" {
   basket_name    = "test10-10-2025"
   msid           = var.msid
   azure_budget   = "1"
-  azure_nickname = "TestApiAzureSub"
+  friendly_name  = "TestApiAzureSub"
   azure_contact  = var.azure_contact
   quantity       = 1
 
@@ -43,7 +43,7 @@ resource "softcat_azure_subscription" "example" {
 - `msid` (String) Microsoft tenant ID required by the Softcat API.
 - `azure_budget` (String) Budget value sent to the Softcat Azure subscription mutation.
 - `azure_contact` (String) Primary contact email sent to the Softcat Azure subscription mutation. This is also used as the budget contact for updates.
-- `azure_nickname` (String) Friendly name for the Azure subscription. This is the same underlying value returned as the subscription display name.
+- `friendly_name` (String) Friendly name for the Azure subscription.
 - `checkout_data` (Block List, Min: 1, Max: 1) Checkout metadata required by the create mutation.
 
 ### Optional
@@ -56,7 +56,6 @@ resource "softcat_azure_subscription" "example" {
 - `id` (String) Terraform resource ID. This is the Softcat `order_id`.
 - `order_id` (String) Softcat order identifier returned by the mutation.
 - `subscription_id` (String) Azure subscription identifier.
-- `display_name` (String) Azure subscription display name.
 - `status` (String) Order or subscription status returned by the API.
 - `order_name` (String) Order name returned by the Softcat API.
 - `currency` (String) Currency associated with the created order.

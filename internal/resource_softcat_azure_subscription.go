@@ -36,23 +36,9 @@ type AzureSubscriptionCreator struct {
 type AzureSubscriptionOrder struct {
 	DateCreated           string                    `json:"dateCreated"`
 	DateStored            string                    `json:"dateStored"`
-	ItemCount             int                       `json:"itemCount"`
 	Status                string                    `json:"status"`
-	BasketTotalIncVat     string                    `json:"basketTotalIncVat"`
-	BasketTotalExcVat     string                    `json:"basketTotalExcVat"`
-	ProductsTotalIncVat   string                    `json:"productsTotalIncVat"`
-	ProductsTotalExcVat   string                    `json:"productsTotalExcVat"`
-	ShippingIncVat        string                    `json:"shippingIncVat"`
-	ShippingExcVat        string                    `json:"shippingExcVat"`
 	Currency              string                    `json:"currency"`
-	DeliveryContact       string                    `json:"deliveryContact"`
-	DeliveryContactPhone  string                    `json:"deliveryContactPhone"`
-	DeliveryContactEmail  string                    `json:"deliveryContactEmail"`
 	PONumber              string                    `json:"poNumber"`
-	PaymentMethod         string                    `json:"paymentMethod"`
-	StoreCollection       bool                      `json:"storeCollection"`
-	Collected             bool                      `json:"collected"`
-	PurchasingInstruction string                    `json:"purchasingInstruction"`
 	OrderName             string                    `json:"orderName"`
 	OrderID               string                    `json:"orderId"`
 	Creator               *AzureSubscriptionCreator `json:"creator"`
@@ -435,23 +421,9 @@ func buildCreateAzureSubscriptionMutation(request AzureSubscriptionRequest) stri
   ) {
     dateCreated
     dateStored
-    itemCount
     status
-    basketTotalIncVat
-    basketTotalExcVat
-    productsTotalIncVat
-    productsTotalExcVat
-    shippingIncVat
-    shippingExcVat
     currency
-    deliveryContact
-    deliveryContactPhone
-    deliveryContactEmail
     poNumber
-    paymentMethod
-    storeCollection
-    collected
-    purchasingInstruction
     orderName
     orderId
     creator {
