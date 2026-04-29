@@ -71,6 +71,10 @@ type updateAzureSubscriptionResponse struct {
 	UpdateAzureSubscription updateAzureSubscriptionResult `json:"updateAzureSubscription"`
 }
 
+type cancelAzureSubscriptionResponse struct {
+	CancelAzureSubscription updateAzureSubscriptionResult `json:"cancelAzureSubscription"`
+}
+
 type AzureSubscription struct {
 	SubscriptionID string `json:"subscriptionId"`
 	PlanID         string `json:"planId"`
@@ -354,9 +358,35 @@ func resourceAzureSubscriptionImport(_ context.Context, d *schema.ResourceData, 
 	return []*schema.ResourceData{d}, nil
 }
 
-func resourceAzureSubscriptionDelete(_ context.Context, d *schema.ResourceData, _ interface{}) diag.Diagnostics {
-	d.SetId("")
+func resourceAzureSubscriptionDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*Client)
 
+	subscriptionID := d.Get("subscription_id").(string)
+	if subscriptionID == "" {
+		subscription, err := lookupAzureSubscription(ctx, client, d.Get("msid").(string), d.Id())
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("cancel azure subscription: %w", err))
+		}
+		subscriptionID = subscription.SubscriptionID
+	}
+
+	var response cancelAzureSubscriptionResponse
+	if err := client.DoGraphQL(ctx, buildCancelAzureSubscriptionMutation(
+		d.Get("msid").(string),
+		subscriptionID,
+	), &response); err != nil {
+		return diag.FromErr(fmt.Errorf("cancel azure subscription: %w", err))
+	}
+
+	if !response.CancelAzureSubscription.Success {
+		if response.CancelAzureSubscription.Message == "" {
+			response.CancelAzureSubscription.Message = "cancel failed"
+		}
+		return diag.FromErr(fmt.Errorf("cancel azure subscription: %s", response.CancelAzureSubscription.Message))
+	}
+
+	d.SetId("")
+	return nil
 }
 
 func expandAzureSubscriptionRequest(d *schema.ResourceData) (AzureSubscriptionRequest, error) {
@@ -456,6 +486,18 @@ func buildUpdateAzureSubscriptionMutation(msID string, subscriptionID string, fr
 		graphQLString(friendlyName),
 		graphQLString(budget),
 		graphQLString(budgetContact),
+	)
+}
+
+func buildCancelAzureSubscriptionMutation(msID string, subscriptionID string) string {
+	return fmt.Sprintf(`mutation CancelAzureSubscription {
+	cancelAzureSubscription(msid: %s, subscriptionId: %s) {
+		success
+		message
+	}
+}`,
+		graphQLString(msID),
+		graphQLString(subscriptionID),
 	)
 }
 
