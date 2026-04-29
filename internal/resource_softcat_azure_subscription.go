@@ -15,7 +15,7 @@ type AzureSubscriptionRequest struct {
 	MsID          string
 	AzureBudget   string
 	AzureContact  string
-	AzureNickname string
+	FriendlyName  string
 	CheckoutData  AzureSubscriptionCheckoutData
 	Quantity      int
 }
@@ -59,7 +59,7 @@ type AzureSubscriptionOrder struct {
 }
 
 type createAzureSubscriptionResponse struct {
-	CreateAndOrderAzureSubscription AzureSubscriptionOrder `json:"createAndOrderAzureSubscription"`
+	CreateAndOrderAzureSubscription []AzureSubscriptionOrder `json:"createAndOrderAzureSubscription"`
 }
 
 type updateAzureSubscriptionResult struct {
@@ -123,11 +123,11 @@ func ResourceAzureSubscription() *schema.Resource {
 				ValidateFunc: validation.StringIsNotEmpty,
 				Description:  "Primary contact email for the Azure subscription order.",
 			},
-			"azure_nickname": {
+			"friendly_name": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validation.StringIsNotEmpty,
-				Description:  "Friendly name assigned to the Azure subscription order.",
+				Description:  "Friendly name for the Azure subscription.",
 			},
 			"quantity": {
 				Type:         schema.TypeInt,
@@ -179,11 +179,6 @@ func ResourceAzureSubscription() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "Azure subscription identifier returned by the follow-up subscription lookup.",
-			},
-			"display_name": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Azure subscription display name returned by the follow-up subscription lookup.",
 			},
 			"order_name": {
 				Type:        schema.TypeString,
@@ -252,18 +247,20 @@ func resourceAzureSubscriptionCreate(ctx context.Context, d *schema.ResourceData
 		return diag.FromErr(fmt.Errorf("create azure subscription: %w", err))
 	}
 
-	if response.CreateAndOrderAzureSubscription.OrderID == "" {
+	if len(response.CreateAndOrderAzureSubscription) == 0 || response.CreateAndOrderAzureSubscription[0].OrderID == "" {
 		return diag.FromErr(fmt.Errorf("create azure subscription: response did not include orderId"))
 	}
 
-	d.SetId(response.CreateAndOrderAzureSubscription.OrderID)
+	order := response.CreateAndOrderAzureSubscription[0]
 
-	subscription, err := lookupAzureSubscription(ctx, client, request.MsID, response.CreateAndOrderAzureSubscription.OrderID)
+	d.SetId(order.OrderID)
+
+	subscription, err := lookupAzureSubscription(ctx, client, request.MsID, order.OrderID)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("create azure subscription: %w", err))
 	}
 
-	if err := flattenAzureSubscriptionOrder(d, response.CreateAndOrderAzureSubscription); err != nil {
+	if err := flattenAzureSubscriptionOrder(d, order); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -322,7 +319,7 @@ func resourceAzureSubscriptionUpdate(ctx context.Context, d *schema.ResourceData
 	if err := client.DoGraphQL(ctx, buildUpdateAzureSubscriptionMutation(
 		d.Get("msid").(string),
 		subscriptionID,
-		d.Get("azure_nickname").(string),
+		d.Get("friendly_name").(string),
 		d.Get("azure_budget").(string),
 		d.Get("azure_contact").(string),
 	), &response); err != nil {
@@ -394,8 +391,8 @@ func expandAzureSubscriptionRequest(d *schema.ResourceData) (AzureSubscriptionRe
 		MsID:          d.Get("msid").(string),
 		AzureBudget:   d.Get("azure_budget").(string),
 		AzureContact:  d.Get("azure_contact").(string),
-		AzureNickname: d.Get("azure_nickname").(string),
-		Quantity:      d.Get("quantity").(int),
+		FriendlyName: d.Get("friendly_name").(string),
+		Quantity:     d.Get("quantity").(int),
 	}
 
 	if basketName, ok := d.GetOk("basket_name"); ok {
@@ -423,7 +420,7 @@ func buildCreateAzureSubscriptionMutation(request AzureSubscriptionRequest) stri
 		fmt.Sprintf("checkoutData: { purchaseOrderNumber: %s, additionalInformation: %s, cspTerms: %t }", graphQLString(request.CheckoutData.PurchaseOrderNumber), graphQLString(request.CheckoutData.AdditionalInformation), request.CheckoutData.CSPTerms),
 		fmt.Sprintf("msid: %s", graphQLString(request.MsID)),
 		fmt.Sprintf("azureBudget: %s", graphQLString(request.AzureBudget)),
-		fmt.Sprintf("azureNickname: %s", graphQLString(request.AzureNickname)),
+		fmt.Sprintf("azureNickname: %s", graphQLString(request.FriendlyName)),
 		fmt.Sprintf("azureContact: %s", graphQLString(request.AzureContact)),
 		fmt.Sprintf("quantity: %d", request.Quantity),
 	}
@@ -598,16 +595,12 @@ func flattenAzureSubscriptionOrder(d *schema.ResourceData, order AzureSubscripti
 }
 
 func flattenAzureSubscription(d *schema.ResourceData, subscription AzureSubscription) error {
-	if err := d.Set("azure_nickname", subscription.FriendlyName); err != nil {
-		return fmt.Errorf("set azure_nickname: %w", err)
+	if err := d.Set("friendly_name", subscription.FriendlyName); err != nil {
+		return fmt.Errorf("set friendly_name: %w", err)
 	}
 
 	if err := d.Set("subscription_id", subscription.SubscriptionID); err != nil {
 		return fmt.Errorf("set subscription_id: %w", err)
-	}
-
-	if err := d.Set("display_name", subscription.FriendlyName); err != nil {
-		return fmt.Errorf("set display_name: %w", err)
 	}
 
 	return nil
