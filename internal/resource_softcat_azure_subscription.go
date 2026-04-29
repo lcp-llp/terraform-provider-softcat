@@ -62,11 +62,36 @@ type createAzureSubscriptionResponse struct {
 	CreateAndOrderAzureSubscription AzureSubscriptionOrder `json:"createAndOrderAzureSubscription"`
 }
 
+type updateAzureSubscriptionResult struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type updateAzureSubscriptionResponse struct {
+	UpdateAzureSubscription updateAzureSubscriptionResult `json:"updateAzureSubscription"`
+}
+
+type AzureSubscription struct {
+	SubscriptionID string `json:"subscriptionId"`
+	PlanID         string `json:"planId"`
+	FriendlyName   string `json:"friendlyName"`
+	Status         string `json:"status"`
+	OrderID        string `json:"orderId"`
+}
+
+type getAzureSubscriptionsResponse struct {
+	GetAzureSubscriptions []AzureSubscription `json:"getAzureSubscriptions"`
+}
+
 func ResourceAzureSubscription() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceAzureSubscriptionCreate,
 		ReadContext:   resourceAzureSubscriptionRead,
+		UpdateContext: resourceAzureSubscriptionUpdate,
 		DeleteContext: resourceAzureSubscriptionDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceAzureSubscriptionImport,
+		},
 		Schema: map[string]*schema.Schema{
 			"basket_name": {
 				Type:         schema.TypeString,
@@ -80,26 +105,23 @@ func ResourceAzureSubscription() *schema.Resource {
 				Required:     true,
 				ForceNew:     true,
 				ValidateFunc: validation.StringIsNotEmpty,
-				Description:  "Microsoft tenant or account identifier required by the Softcat API.",
+				Description:  "Microsoft tenant ID required by the Softcat API.",
 			},
 			"azure_budget": {
 				Type:         schema.TypeString,
 				Required:     true,
-				ForceNew:     true,
 				ValidateFunc: validation.StringIsNotEmpty,
 				Description:  "Budget value passed to the Softcat Azure subscription order mutation.",
 			},
 			"azure_contact": {
 				Type:         schema.TypeString,
 				Required:     true,
-				ForceNew:     true,
 				ValidateFunc: validation.StringIsNotEmpty,
 				Description:  "Primary contact email for the Azure subscription order.",
 			},
 			"azure_nickname": {
 				Type:         schema.TypeString,
 				Required:     true,
-				ForceNew:     true,
 				ValidateFunc: validation.StringIsNotEmpty,
 				Description:  "Friendly name assigned to the Azure subscription order.",
 			},
@@ -148,6 +170,16 @@ func ResourceAzureSubscription() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "Softcat order identifier returned by the mutation.",
+			},
+			"subscription_id": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "Azure subscription identifier returned by the follow-up subscription lookup.",
+			},
+			"display_name": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "Azure subscription display name returned by the follow-up subscription lookup.",
 			},
 			"order_name": {
 				Type:        schema.TypeString,
@@ -222,25 +254,109 @@ func resourceAzureSubscriptionCreate(ctx context.Context, d *schema.ResourceData
 
 	d.SetId(response.CreateAndOrderAzureSubscription.OrderID)
 
+	subscription, err := lookupAzureSubscription(ctx, client, request.MsID, response.CreateAndOrderAzureSubscription.OrderID)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("create azure subscription: %w", err))
+	}
+
 	if err := flattenAzureSubscriptionOrder(d, response.CreateAndOrderAzureSubscription); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := flattenAzureSubscription(d, subscription); err != nil {
 		return diag.FromErr(err)
 	}
 
 	return resourceAzureSubscriptionRead(ctx, d, meta)
 }
 
-func resourceAzureSubscriptionRead(_ context.Context, _ *schema.ResourceData, _ interface{}) diag.Diagnostics {
+
+func resourceAzureSubscriptionRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	if d.Id() == "" {
+		return nil
+	}
+
+	client := meta.(*Client)
+
+	subscription, err := lookupAzureSubscription(ctx, client, d.Get("msid").(string), d.Id())
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("read azure subscription: %w", err))
+	}
+
+	if subscription.OrderID != "" {
+		if err := d.Set("order_id", subscription.OrderID); err != nil {
+			return diag.FromErr(fmt.Errorf("set order_id: %w", err))
+		}
+	}
+
+	if subscription.Status != "" {
+		if err := d.Set("status", subscription.Status); err != nil {
+			return diag.FromErr(fmt.Errorf("set status: %w", err))
+		}
+	}
+
+	if err := flattenAzureSubscription(d, subscription); err != nil {
+		return diag.FromErr(err)
+	}
+
 	return nil
+}
+
+func resourceAzureSubscriptionUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*Client)
+
+	subscriptionID := d.Get("subscription_id").(string)
+	if subscriptionID == "" {
+		subscription, err := lookupAzureSubscription(ctx, client, d.Get("msid").(string), d.Id())
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("update azure subscription: %w", err))
+		}
+		subscriptionID = subscription.SubscriptionID
+	}
+
+	var response updateAzureSubscriptionResponse
+	if err := client.DoGraphQL(ctx, buildUpdateAzureSubscriptionMutation(
+		d.Get("msid").(string),
+		subscriptionID,
+		d.Get("azure_nickname").(string),
+		d.Get("azure_budget").(string),
+		d.Get("azure_contact").(string),
+	), &response); err != nil {
+		return diag.FromErr(fmt.Errorf("update azure subscription: %w", err))
+	}
+
+	if !response.UpdateAzureSubscription.Success {
+		if response.UpdateAzureSubscription.Message == "" {
+			response.UpdateAzureSubscription.Message = "update failed"
+		}
+		return diag.FromErr(fmt.Errorf("update azure subscription: %s", response.UpdateAzureSubscription.Message))
+	}
+
+	return resourceAzureSubscriptionRead(ctx, d, meta)
+}
+
+func resourceAzureSubscriptionImport(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
+	msID, orderID, err := parseAzureSubscriptionImportID(d.Id())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := d.Set("msid", msID); err != nil {
+		return nil, fmt.Errorf("set msid: %w", err)
+	}
+
+	if err := d.Set("order_id", orderID); err != nil {
+		return nil, fmt.Errorf("set order_id: %w", err)
+	}
+
+	d.SetId(orderID)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func resourceAzureSubscriptionDelete(_ context.Context, d *schema.ResourceData, _ interface{}) diag.Diagnostics {
 	d.SetId("")
 
-	return diag.Diagnostics{{
-		Severity: diag.Warning,
-		Summary:  "Resource removed from state only",
-		Detail:   "The Softcat API integration does not yet expose a delete operation for Azure subscription orders, so Terraform can only forget this resource locally.",
-	}}
 }
 
 func expandAzureSubscriptionRequest(d *schema.ResourceData) (AzureSubscriptionRequest, error) {
@@ -322,6 +438,81 @@ func buildCreateAzureSubscriptionMutation(request AzureSubscriptionRequest) stri
 		strings.Join(arguments, "\n    "))
 }
 
+func buildUpdateAzureSubscriptionMutation(msID string, subscriptionID string, friendlyName string, budget string, budgetContact string) string {
+	return fmt.Sprintf(`mutation UpdateAzureSubscription {
+	updateAzureSubscription(
+		msid: %s
+		subscriptionId: %s
+		friendlyName: %s
+		budget: %s
+		budgetContact: %s
+	) {
+		success
+		message
+	}
+}`,
+		graphQLString(msID),
+		graphQLString(subscriptionID),
+		graphQLString(friendlyName),
+		graphQLString(budget),
+		graphQLString(budgetContact),
+	)
+}
+
+
+func lookupAzureSubscription(ctx context.Context, client *Client, msID string, orderID string) (AzureSubscription, error) {
+	if msID == "" {
+		return AzureSubscription{}, fmt.Errorf("msid must not be empty")
+	}
+
+	if orderID == "" {
+		return AzureSubscription{}, fmt.Errorf("orderId must not be empty")
+	}
+
+	var response getAzureSubscriptionsResponse
+	if err := client.DoGraphQL(ctx, buildGetAzureSubscriptionsQuery(msID, orderID), &response); err != nil {
+		return AzureSubscription{}, fmt.Errorf("get azure subscriptions: %w", err)
+	}
+
+	for _, subscription := range response.GetAzureSubscriptions {
+		if subscription.SubscriptionID != "" {
+			return subscription, nil
+		}
+	}
+
+	return AzureSubscription{}, fmt.Errorf("get azure subscriptions: response did not include subscriptionId for orderId %q", orderID)
+}
+
+func buildGetAzureSubscriptionsQuery(msID string, orderID string) string {
+	return fmt.Sprintf(`query GetAzureSubscriptions {
+	getAzureSubscriptions(msid: %s, orderId: %s) {
+    subscriptionId
+    planId
+    friendlyName
+    status
+    orderId
+    creationDate
+    effectiveStartDate
+    billingCycle
+    commitmentEndDate
+    autoRenewEnabled
+    budget
+    budgetContact
+  }
+}`,
+		graphQLString(msID),
+		graphQLString(orderID))
+}
+
+func parseAzureSubscriptionImportID(value string) (string, string, error) {
+	parts := strings.SplitN(value, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("unexpected import ID format %q, expected msid/order_id", value)
+	}
+
+	return parts[0], parts[1], nil
+}
+
 func flattenAzureSubscriptionOrder(d *schema.ResourceData, order AzureSubscriptionOrder) error {
 	if err := d.Set("status", order.Status); err != nil {
 		return fmt.Errorf("set status: %w", err)
@@ -359,6 +550,22 @@ func flattenAzureSubscriptionOrder(d *schema.ResourceData, order AzureSubscripti
 		"account": order.Creator.Account,
 	}}); err != nil {
 		return fmt.Errorf("set creator: %w", err)
+	}
+
+	return nil
+}
+
+func flattenAzureSubscription(d *schema.ResourceData, subscription AzureSubscription) error {
+	if err := d.Set("azure_nickname", subscription.FriendlyName); err != nil {
+		return fmt.Errorf("set azure_nickname: %w", err)
+	}
+
+	if err := d.Set("subscription_id", subscription.SubscriptionID); err != nil {
+		return fmt.Errorf("set subscription_id: %w", err)
+	}
+
+	if err := d.Set("display_name", subscription.FriendlyName); err != nil {
+		return fmt.Errorf("set display_name: %w", err)
 	}
 
 	return nil

@@ -30,7 +30,7 @@ variable "softcat_password" {
 
 variable "msid" {
   type        = string
-  description = "Microsoft identifier required by the Softcat API."
+  description = "Microsoft tenant ID required by the Softcat API."
 }
 
 variable "azure_contact" {
@@ -52,6 +52,11 @@ resource "softcat_azure_subscription" "example" {
     csp_terms              = true
   }
 }
+
+# Import format:
+# terraform import softcat_azure_subscription.example <msid>/<order_id>
+# Example:
+# terraform import softcat_azure_subscription.example 00000000-0000-0000-0000-000000000000/SC-ORDER-12345
 
 output "softcat_order_id" {
   value = softcat_azure_subscription.example.order_id
