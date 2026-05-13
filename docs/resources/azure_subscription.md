@@ -53,7 +53,7 @@ resource "softcat_azure_subscription" "example" {
 
 ### Read-Only
 
-- `id` (String) Terraform resource ID. This is the Softcat `order_id`.
+- `id` (String) Terraform resource ID. This is the Azure `subscription_id`.
 - `order_id` (String) Softcat order identifier returned by the mutation.
 - `subscription_id` (String) Azure subscription identifier.
 - `status` (String) Order or subscription status returned by the API.
@@ -86,14 +86,14 @@ Read-Only:
 
 ## Import
 
-Import is supported using the Microsoft tenant ID and Softcat order ID.
+Import is supported using the Microsoft tenant ID and Azure subscription ID. This allows importing subscriptions that were not originally created through Terraform and may not have a Softcat order ID.
 
 ```terraform
-terraform import softcat_azure_subscription.example <msid>/<order_id>
+terraform import softcat_azure_subscription.example <msid>/<subscription_id>
 ```
 
 Example:
 
 ```terraform
-terraform import softcat_azure_subscription.example 00000000-0000-0000-0000-000000000000/SC-ORDER-12345
+terraform import softcat_azure_subscription.example 00000000-0000-0000-0000-000000000000/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```

@@ -239,12 +239,12 @@ func resourceAzureSubscriptionCreate(ctx context.Context, d *schema.ResourceData
 
 	order := response.CreateAndOrderAzureSubscription[0]
 
-	d.SetId(order.OrderID)
-
 	subscription, err := lookupAzureSubscription(ctx, client, request.MsID, order.OrderID)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("create azure subscription: %w", err))
 	}
+
+	d.SetId(subscription.SubscriptionID)
 
 	if err := flattenAzureSubscriptionOrder(d, order); err != nil {
 		return diag.FromErr(err)
@@ -264,8 +264,17 @@ func resourceAzureSubscriptionRead(ctx context.Context, d *schema.ResourceData, 
 	}
 
 	client := meta.(*Client)
+	msID := d.Get("msid").(string)
 
-	subscription, err := lookupAzureSubscription(ctx, client, d.Get("msid").(string), d.Id())
+	var subscription AzureSubscription
+	var err error
+
+	orderID := d.Get("order_id").(string)
+	if orderID != "" {
+		subscription, err = lookupAzureSubscription(ctx, client, msID, orderID)
+	} else {
+		subscription, err = lookupAzureSubscriptionBySubID(ctx, client, msID, d.Id())
+	}
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("read azure subscription: %w", err))
 	}
@@ -294,11 +303,7 @@ func resourceAzureSubscriptionUpdate(ctx context.Context, d *schema.ResourceData
 
 	subscriptionID := d.Get("subscription_id").(string)
 	if subscriptionID == "" {
-		subscription, err := lookupAzureSubscription(ctx, client, d.Get("msid").(string), d.Id())
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("update azure subscription: %w", err))
-		}
-		subscriptionID = subscription.SubscriptionID
+		subscriptionID = d.Id()
 	}
 
 	var response updateAzureSubscriptionResponse
@@ -323,7 +328,7 @@ func resourceAzureSubscriptionUpdate(ctx context.Context, d *schema.ResourceData
 }
 
 func resourceAzureSubscriptionImport(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
-	msID, orderID, err := parseAzureSubscriptionImportID(d.Id())
+	msID, subscriptionID, err := parseAzureSubscriptionImportID(d.Id())
 	if err != nil {
 		return nil, err
 	}
@@ -332,11 +337,7 @@ func resourceAzureSubscriptionImport(_ context.Context, d *schema.ResourceData, 
 		return nil, fmt.Errorf("set msid: %w", err)
 	}
 
-	if err := d.Set("order_id", orderID); err != nil {
-		return nil, fmt.Errorf("set order_id: %w", err)
-	}
-
-	d.SetId(orderID)
+	d.SetId(subscriptionID)
 
 	return []*schema.ResourceData{d}, nil
 }
@@ -346,11 +347,7 @@ func resourceAzureSubscriptionDelete(ctx context.Context, d *schema.ResourceData
 
 	subscriptionID := d.Get("subscription_id").(string)
 	if subscriptionID == "" {
-		subscription, err := lookupAzureSubscription(ctx, client, d.Get("msid").(string), d.Id())
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("cancel azure subscription: %w", err))
-		}
-		subscriptionID = subscription.SubscriptionID
+		subscriptionID = d.Id()
 	}
 
 	var response cancelAzureSubscriptionResponse
@@ -515,10 +512,54 @@ func buildGetAzureSubscriptionsQuery(msID string, orderID string) string {
 		graphQLString(orderID))
 }
 
+func buildGetAzureSubscriptionsBySubIDQuery(msID string, subID string) string {
+	return fmt.Sprintf(`query GetAzureSubscriptions {
+	getAzureSubscriptions(msid: %s, subId: %s) {
+    subscriptionId
+    planId
+    friendlyName
+    status
+    orderId
+    creationDate
+    effectiveStartDate
+    billingCycle
+    commitmentEndDate
+    autoRenewEnabled
+    budget
+    budgetContact
+  }
+}`,
+		graphQLString(msID),
+		graphQLString(subID))
+}
+
+func lookupAzureSubscriptionBySubID(ctx context.Context, client *Client, msID string, subID string) (AzureSubscription, error) {
+	if msID == "" {
+		return AzureSubscription{}, fmt.Errorf("msid must not be empty")
+	}
+
+	if subID == "" {
+		return AzureSubscription{}, fmt.Errorf("subscriptionId must not be empty")
+	}
+
+	var response getAzureSubscriptionsResponse
+	if err := client.DoGraphQL(ctx, buildGetAzureSubscriptionsBySubIDQuery(msID, subID), &response); err != nil {
+		return AzureSubscription{}, fmt.Errorf("get azure subscriptions: %w", err)
+	}
+
+	for _, subscription := range response.GetAzureSubscriptions {
+		if subscription.SubscriptionID != "" {
+			return subscription, nil
+		}
+	}
+
+	return AzureSubscription{}, fmt.Errorf("get azure subscriptions: subscription not found for subscriptionId %q", subID)
+}
+
 func parseAzureSubscriptionImportID(value string) (string, string, error) {
 	parts := strings.SplitN(value, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("unexpected import ID format %q, expected msid/order_id", value)
+		return "", "", fmt.Errorf("unexpected import ID format %q, expected msid/subscription_id", value)
 	}
 
 	return parts[0], parts[1], nil
