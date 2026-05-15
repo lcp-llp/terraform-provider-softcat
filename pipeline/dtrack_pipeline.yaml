@@ -34,9 +34,32 @@ steps:
 - script: npm install -g @cyclonedx/cdxgen
   displayName: 'Install cdxgen'
 
+- script: |
+    echo "=== go version ==="
+    go version
+    echo "=== go.mod ==="
+    cat go.mod
+    echo "=== go mod verify ==="
+    go mod verify
+    echo "=== dependency count ==="
+    go list -m all | wc -l
+  displayName: 'Diag: Go module info'
+  workingDirectory: ${{ parameters.workingDirectory }}
+
 - script: cdxgen -t go --spec-version 1.5 -o '$(Agent.TempDirectory)/bom.json' .
   displayName: 'Create Go provider SBOM'
   workingDirectory: ${{ parameters.workingDirectory }}
+
+- script: |
+    echo "=== BOM file size ==="
+    wc -c '$(Agent.TempDirectory)/bom.json'
+    echo "=== Component count ==="
+    node -e "const b = require('$(Agent.TempDirectory)/bom.json'); console.log('components:', (b.components || []).length, '| dependencies:', (b.dependencies || []).length);"
+    echo "=== BOM metadata ==="
+    node -e "const b = require('$(Agent.TempDirectory)/bom.json'); console.log(JSON.stringify(b.metadata, null, 2));"
+    echo "=== Component names ==="
+    node -e "const b = require('$(Agent.TempDirectory)/bom.json'); (b.components || []).forEach(c => console.log(c.name + '@' + c.version));"
+  displayName: 'Diag: Validate SBOM contents'
 
 - task: upload-bom-dtrack@1
   displayName: 'Upload SBOM to Dependency-Track'
