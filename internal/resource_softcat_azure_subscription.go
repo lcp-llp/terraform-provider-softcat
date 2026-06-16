@@ -264,15 +264,7 @@ func resourceAzureSubscriptionRead(ctx context.Context, d *schema.ResourceData, 
 	client := meta.(*Client)
 	msID := d.Get("msid").(string)
 
-	var subscription AzureSubscription
-	var err error
-
-	orderID := d.Get("order_id").(string)
-	if orderID != "" {
-		subscription, err = lookupAzureSubscription(ctx, client, msID, orderID)
-	} else {
-		subscription, err = lookupAzureSubscriptionBySubID(ctx, client, msID, d.Id())
-	}
+	subscription, err := lookupAzureSubscriptionBySubID(ctx, client, msID, d.Id())
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("read azure subscription: %w", err))
 	}
@@ -558,7 +550,7 @@ func lookupAzureSubscriptionBySubID(ctx context.Context, client *Client, msID st
 	}
 
 	for _, subscription := range response.GetAzureSubscriptions {
-		if subscription.SubscriptionID != "" {
+		if subscription.SubscriptionID == subID {
 			return subscription, nil
 		}
 	}
