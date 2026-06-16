@@ -26,22 +26,14 @@ type AzureSubscriptionCheckoutData struct {
 	CSPTerms              bool
 }
 
-type AzureSubscriptionCreator struct {
-	UserID  string `json:"userId"`
-	Name    string `json:"name"`
-	Email   string `json:"email"`
-	Account string `json:"account"`
-}
-
 type AzureSubscriptionOrder struct {
-	DateCreated           string                    `json:"dateCreated"`
-	DateStored            string                    `json:"dateStored"`
-	Status                string                    `json:"status"`
-	Currency              string                    `json:"currency"`
-	PONumber              string                    `json:"poNumber"`
-	OrderName             string                    `json:"orderName"`
-	OrderID               string                    `json:"orderId"`
-	Creator               *AzureSubscriptionCreator `json:"creator"`
+	DateCreated           string `json:"dateCreated"`
+	DateStored            string `json:"dateStored"`
+	Status                string `json:"status"`
+	Currency              string `json:"currency"`
+	PONumber              string `json:"poNumber"`
+	OrderName             string `json:"orderName"`
+	OrderID               string `json:"orderId"`
 }
 
 type createAzureSubscriptionResponse struct {
@@ -188,31 +180,6 @@ func ResourceAzureSubscription() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "Timestamp when the order was stored by the API.",
-			},
-			"creator": {
-				Type:        schema.TypeList,
-				Computed:    true,
-				Description: "Creator metadata returned by the Softcat API.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"user_id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"name": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"email": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"account": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-					},
-				},
 			},
 		},
 	}
@@ -438,12 +405,6 @@ func buildCreateAzureSubscriptionMutation(request AzureSubscriptionRequest) stri
     poNumber
     orderName
     orderId
-    creator {
-      userId
-      name
-      email
-      account
-    }
   }
 }`,
 		strings.Join(arguments, "\n    "))
@@ -623,22 +584,6 @@ func flattenAzureSubscriptionOrder(d *schema.ResourceData, order AzureSubscripti
 	}
 	if err := d.Set("date_stored", order.DateStored); err != nil {
 		return fmt.Errorf("set date_stored: %w", err)
-	}
-
-	if order.Creator == nil {
-		if err := d.Set("creator", nil); err != nil {
-			return fmt.Errorf("set creator: %w", err)
-		}
-		return nil
-	}
-
-	if err := d.Set("creator", []interface{}{map[string]interface{}{
-		"user_id": order.Creator.UserID,
-		"name":    order.Creator.Name,
-		"email":   order.Creator.Email,
-		"account": order.Creator.Account,
-	}}); err != nil {
-		return fmt.Errorf("set creator: %w", err)
 	}
 
 	return nil

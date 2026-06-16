@@ -77,7 +77,6 @@ resource "softcat_azure_subscription" "csp_moved" {
 - `po_number` (String) Purchase order number echoed by the API.
 - `date_created` (String) Timestamp when the order was created.
 - `date_stored` (String) Timestamp when the order was stored.
-- `creator` (Block List, Max: 1) Creator metadata returned by the Softcat API.
 
 ### Nested Schema for `checkout_data`
 
@@ -89,15 +88,6 @@ Required:
 Optional:
 
 - `additional_information` (String) Optional free-form information sent with the checkout payload.
-
-### Nested Schema for `creator`
-
-Read-Only:
-
-- `user_id` (String) Creator user ID.
-- `name` (String) Creator name.
-- `email` (String) Creator email address.
-- `account` (String) Creator account identifier.
 
 ## Import
 
