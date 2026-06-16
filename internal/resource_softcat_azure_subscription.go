@@ -13,7 +13,7 @@ import (
 type AzureSubscriptionRequest struct {
 	BasketName    *string
 	MsID          string
-	AzureBudget   string
+	AzureBudget   *string
 	AzureContact  string
 	FriendlyName  string
 	CheckoutData  *AzureSubscriptionCheckoutData
@@ -98,10 +98,9 @@ func ResourceAzureSubscription() *schema.Resource {
 				Description:  "Microsoft tenant ID required by the Softcat API.",
 			},
 			"azure_budget": {
-				Type:         schema.TypeString,
-				Required:     true,
-				ValidateFunc: validation.StringIsNotEmpty,
-				Description:  "Budget value passed to the Softcat Azure subscription order mutation.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Budget value passed to the Softcat Azure subscription order mutation.",
 			},
 			"azure_contact": {
 				Type:         schema.TypeString,
@@ -306,11 +305,17 @@ func resourceAzureSubscriptionUpdate(ctx context.Context, d *schema.ResourceData
 	}
 
 	var response updateAzureSubscriptionResponse
+	var budgetPtr *string
+	if v, ok := d.GetOk("azure_budget"); ok {
+		s := v.(string)
+		budgetPtr = &s
+	}
+
 	if err := client.DoGraphQL(ctx, buildUpdateAzureSubscriptionMutation(
 		d.Get("msid").(string),
 		subscriptionID,
 		d.Get("friendly_name").(string),
-		d.Get("azure_budget").(string),
+		budgetPtr,
 		d.Get("azure_contact").(string),
 	), &response); err != nil {
 		return diag.FromErr(fmt.Errorf("update azure subscription: %w", err))
@@ -370,11 +375,15 @@ func resourceAzureSubscriptionDelete(ctx context.Context, d *schema.ResourceData
 
 func expandAzureSubscriptionRequest(d *schema.ResourceData) (AzureSubscriptionRequest, error) {
 	request := AzureSubscriptionRequest{
-		MsID:          d.Get("msid").(string),
-		AzureBudget:   d.Get("azure_budget").(string),
-		AzureContact:  d.Get("azure_contact").(string),
+		MsID:         d.Get("msid").(string),
+		AzureContact: d.Get("azure_contact").(string),
 		FriendlyName: d.Get("friendly_name").(string),
 		Quantity:     d.Get("quantity").(int),
+	}
+
+	if v, ok := d.GetOk("azure_budget"); ok {
+		value := v.(string)
+		request.AzureBudget = &value
 	}
 
 	if basketName, ok := d.GetOk("basket_name"); ok {
@@ -397,10 +406,13 @@ func expandAzureSubscriptionRequest(d *schema.ResourceData) (AzureSubscriptionRe
 func buildCreateAzureSubscriptionMutation(request AzureSubscriptionRequest) string {
 	arguments := []string{
 		fmt.Sprintf("msid: %s", graphQLString(request.MsID)),
-		fmt.Sprintf("azureBudget: %s", graphQLString(request.AzureBudget)),
 		fmt.Sprintf("azureNickname: %s", graphQLString(request.FriendlyName)),
 		fmt.Sprintf("azureContact: %s", graphQLString(request.AzureContact)),
 		fmt.Sprintf("quantity: %d", request.Quantity),
+	}
+
+	if request.AzureBudget != nil {
+		arguments = append(arguments, fmt.Sprintf("azureBudget: %s", graphQLString(*request.AzureBudget)))
 	}
 
 	if request.CheckoutData != nil {
@@ -433,25 +445,24 @@ func buildCreateAzureSubscriptionMutation(request AzureSubscriptionRequest) stri
 		strings.Join(arguments, "\n    "))
 }
 
-func buildUpdateAzureSubscriptionMutation(msID string, subscriptionID string, friendlyName string, budget string, budgetContact string) string {
+func buildUpdateAzureSubscriptionMutation(msID string, subscriptionID string, friendlyName string, budget *string, budgetContact string) string {
+	args := []string{
+		fmt.Sprintf("msid: %s", graphQLString(msID)),
+		fmt.Sprintf("subscriptionId: %s", graphQLString(subscriptionID)),
+		fmt.Sprintf("friendlyName: %s", graphQLString(friendlyName)),
+		fmt.Sprintf("budgetContact: %s", graphQLString(budgetContact)),
+	}
+	if budget != nil {
+		args = append(args, fmt.Sprintf("budget: %s", graphQLString(*budget)))
+	}
 	return fmt.Sprintf(`mutation UpdateAzureSubscription {
 	updateAzureSubscription(
-		msid: %s
-		subscriptionId: %s
-		friendlyName: %s
-		budget: %s
-		budgetContact: %s
+		%s
 	) {
 		success
 		message
 	}
-}`,
-		graphQLString(msID),
-		graphQLString(subscriptionID),
-		graphQLString(friendlyName),
-		graphQLString(budget),
-		graphQLString(budgetContact),
-	)
+}`, strings.Join(args, "\n\t\t"))
 }
 
 func buildCancelAzureSubscriptionMutation(msID string, subscriptionID string) string {

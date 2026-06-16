@@ -41,7 +41,6 @@ resource "softcat_azure_subscription" "example" {
 ### Required
 
 - `msid` (String) Microsoft tenant ID required by the Softcat API.
-- `azure_budget` (String) Budget value sent to the Softcat Azure subscription mutation.
 - `azure_contact` (String) Primary contact email sent to the Softcat Azure subscription mutation. This is also used as the budget contact for updates.
 - `friendly_name` (String) Friendly name for the Azure subscription.
 
@@ -51,7 +50,7 @@ resource "softcat_azure_subscription" "example" {
 - `basket_name` (String) Optional basket name used when placing the Azure subscription order.
 - `quantity` (Number) Quantity passed to the order mutation. Defaults to `1`.
 - `checkout_data` (Block List, Min: 1, Max: 1) Checkout data is `Required` when creating new subscriptions.
-
+- `azure_budget` (String) Budget value sent to the Softcat Azure subscription mutation.
 ### Read-Only
 
 - `id` (String) Terraform resource ID. This is the Azure `subscription_id`.
