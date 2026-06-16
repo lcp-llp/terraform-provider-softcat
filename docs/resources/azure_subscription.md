@@ -7,9 +7,14 @@ description: |-
 
 # softcat_azure_subscription
 
-Manages a Softcat Azure subscription order. After creation, the provider also looks up the Azure subscription details for the created order and exposes the resulting subscription metadata in state.
+Manages a Softcat Azure subscription. The resource supports two workflows:
+
+- **New subscriptions** — placed via the Softcat API using `checkout_data`. The provider looks up the resulting Azure subscription by order ID after creation.
+- **CSP-moved subscriptions** — existing Azure subscriptions that have been moved to Softcat CSP and already have a known subscription ID. These can be imported directly and managed without `checkout_data`.
 
 ## Example Usage
+
+### New subscription
 
 ```terraform
 terraform {
@@ -36,6 +41,16 @@ resource "softcat_azure_subscription" "example" {
 }
 ```
 
+### CSP-moved subscription (import only)
+
+```terraform
+resource "softcat_azure_subscription" "csp_moved" {
+  msid          = var.msid
+  friendly_name = "MyExistingSubscription"
+  azure_contact = var.azure_contact
+}
+```
+
 ## Schema
 
 ### Required
@@ -49,7 +64,7 @@ resource "softcat_azure_subscription" "example" {
 
 - `basket_name` (String) Optional basket name used when placing the Azure subscription order.
 - `quantity` (Number) Quantity passed to the order mutation. Defaults to `1`.
-- `checkout_data` (Block List, Min: 1, Max: 1) Checkout data is `Required` when creating new subscriptions.
+- `checkout_data` (Block List, Max: 1) Checkout metadata required when placing a new subscription order. Not required for CSP-moved subscriptions that are imported.
 - `azure_budget` (String) Budget value sent to the Softcat Azure subscription mutation.
 ### Read-Only
 
@@ -86,7 +101,7 @@ Read-Only:
 
 ## Import
 
-Import is supported using the Microsoft tenant ID and Azure subscription ID. This allows importing subscriptions that were not originally created through Terraform and may not have a Softcat order ID.
+Import is supported using the Microsoft tenant ID and Azure subscription ID. This is the primary workflow for **CSP-moved subscriptions** — existing Azure subscriptions that have been transferred to Softcat CSP and already have a known subscription ID. After import the resource is managed in-place without needing `checkout_data`.
 
 ```terraform
 terraform import softcat_azure_subscription.example <msid>/<subscription_id>

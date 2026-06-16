@@ -266,7 +266,19 @@ func resourceAzureSubscriptionRead(ctx context.Context, d *schema.ResourceData, 
 
 	subscription, err := lookupAzureSubscriptionBySubID(ctx, client, msID, d.Id())
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("read azure subscription: %w", err))
+		// For new subscriptions, the API may not yet index the subscription by ID
+		// immediately after order placement (async provisioning). Fall back to
+		// querying by order_id and matching the exact subscription ID.
+		// CSP-moved subscriptions should always be found by subId, so this
+		// fallback is only exercised during the async provisioning window.
+		orderID := d.Get("order_id").(string)
+		if orderID == "" {
+			return diag.FromErr(fmt.Errorf("read azure subscription: %w", err))
+		}
+		subscription, err = lookupAzureSubscriptionFromOrder(ctx, client, msID, orderID, d.Id())
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("read azure subscription: %w", err))
+		}
 	}
 
 	if subscription.OrderID != "" {
@@ -491,6 +503,29 @@ func lookupAzureSubscription(ctx context.Context, client *Client, msID string, o
 	}
 
 	return AzureSubscription{}, fmt.Errorf("get azure subscriptions: response did not include subscriptionId for orderId %q", orderID)
+}
+
+func lookupAzureSubscriptionFromOrder(ctx context.Context, client *Client, msID string, orderID string, subID string) (AzureSubscription, error) {
+	if msID == "" {
+		return AzureSubscription{}, fmt.Errorf("msid must not be empty")
+	}
+
+	if orderID == "" {
+		return AzureSubscription{}, fmt.Errorf("orderId must not be empty")
+	}
+
+	var response getAzureSubscriptionsResponse
+	if err := client.DoGraphQL(ctx, buildGetAzureSubscriptionsQuery(msID, orderID), &response); err != nil {
+		return AzureSubscription{}, fmt.Errorf("get azure subscriptions: %w", err)
+	}
+
+	for _, subscription := range response.GetAzureSubscriptions {
+		if subscription.SubscriptionID == subID {
+			return subscription, nil
+		}
+	}
+
+	return AzureSubscription{}, fmt.Errorf("get azure subscriptions: subscription %q not found for orderId %q", subID, orderID)
 }
 
 func buildGetAzureSubscriptionsQuery(msID string, orderID string) string {
