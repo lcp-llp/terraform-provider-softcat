@@ -16,7 +16,7 @@ type AzureSubscriptionRequest struct {
 	AzureBudget   string
 	AzureContact  string
 	FriendlyName  string
-	CheckoutData  AzureSubscriptionCheckoutData
+	CheckoutData  *AzureSubscriptionCheckoutData
 	Quantity      int
 }
 
@@ -125,9 +125,8 @@ func ResourceAzureSubscription() *schema.Resource {
 			},
 			"checkout_data": {
 				Type:        schema.TypeList,
-				Required:    true,
+				Optional:    true,
 				ForceNew:    true,
-				MinItems:    1,
 				MaxItems:    1,
 				Description: "Checkout metadata required by the createAndOrderAzureSubscription mutation.",
 				Elem: &schema.Resource{
@@ -383,16 +382,13 @@ func expandAzureSubscriptionRequest(d *schema.ResourceData) (AzureSubscriptionRe
 		request.BasketName = &value
 	}
 
-	checkoutData := d.Get("checkout_data").([]interface{})
-	if len(checkoutData) != 1 {
-		return AzureSubscriptionRequest{}, fmt.Errorf("checkout_data must contain exactly one item")
-	}
-
-	checkoutMap := checkoutData[0].(map[string]interface{})
-	request.CheckoutData = AzureSubscriptionCheckoutData{
-		PurchaseOrderNumber:   checkoutMap["purchase_order_number"].(string),
-		AdditionalInformation: checkoutMap["additional_information"].(string),
-		CSPTerms:              checkoutMap["csp_terms"].(bool),
+	if checkoutData := d.Get("checkout_data").([]interface{}); len(checkoutData) == 1 {
+		checkoutMap := checkoutData[0].(map[string]interface{})
+		request.CheckoutData = &AzureSubscriptionCheckoutData{
+			PurchaseOrderNumber:   checkoutMap["purchase_order_number"].(string),
+			AdditionalInformation: checkoutMap["additional_information"].(string),
+			CSPTerms:              checkoutMap["csp_terms"].(bool),
+		}
 	}
 
 	return request, nil
@@ -400,12 +396,15 @@ func expandAzureSubscriptionRequest(d *schema.ResourceData) (AzureSubscriptionRe
 
 func buildCreateAzureSubscriptionMutation(request AzureSubscriptionRequest) string {
 	arguments := []string{
-		fmt.Sprintf("checkoutData: { purchaseOrderNumber: %s, additionalInformation: %s, cspTerms: %t }", graphQLString(request.CheckoutData.PurchaseOrderNumber), graphQLString(request.CheckoutData.AdditionalInformation), request.CheckoutData.CSPTerms),
 		fmt.Sprintf("msid: %s", graphQLString(request.MsID)),
 		fmt.Sprintf("azureBudget: %s", graphQLString(request.AzureBudget)),
 		fmt.Sprintf("azureNickname: %s", graphQLString(request.FriendlyName)),
 		fmt.Sprintf("azureContact: %s", graphQLString(request.AzureContact)),
 		fmt.Sprintf("quantity: %d", request.Quantity),
+	}
+
+	if request.CheckoutData != nil {
+		arguments = append(arguments, fmt.Sprintf("checkoutData: { purchaseOrderNumber: %s, additionalInformation: %s, cspTerms: %t }", graphQLString(request.CheckoutData.PurchaseOrderNumber), graphQLString(request.CheckoutData.AdditionalInformation), request.CheckoutData.CSPTerms))
 	}
 
 	if request.BasketName != nil {
