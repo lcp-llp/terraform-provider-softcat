@@ -64,7 +64,7 @@ resource "softcat_azure_subscription" "csp_moved" {
 
 - `basket_name` (String) Optional basket name used when placing the Azure subscription order.
 - `quantity` (Number) Quantity passed to the order mutation. Defaults to `1`.
-- `checkout_data` (Block List, Max: 1) Checkout metadata required when placing a new subscription order. Not required for CSP-moved subscriptions that are imported.
+- `checkout_data` (Block List, Min: 1, Max: 1) Checkout data is `Required` when creating new subscriptions.
 - `azure_budget` (String) Budget value sent to the Softcat Azure subscription mutation.
 ### Read-Only
 
